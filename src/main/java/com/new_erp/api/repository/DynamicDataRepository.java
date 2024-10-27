@@ -24,13 +24,13 @@ public class DynamicDataRepository {
     }
 
     public List<Map<String, Object>> fetchData(String schema, String table, Map<String, Object> filters,
-                                               String dateColumn, String fromDate, String toDate) {
+                                               String dateColumn, String fromDate, String toDate,
+                                               String sortBy, String sortOrder) {
         validateSchemaAndTable(schema, table);
 
         StringBuilder sql = new StringBuilder("SELECT * FROM " + schema + "." + table + " WHERE 1=1");
         Map<String, Object> queryParams = new HashMap<>();
 
-        // Handle dynamic date range filters
         if (dateColumn != null && fromDate != null) {
             sql.append(" AND ").append(dateColumn).append(" > :fromDate");
             queryParams.put("fromDate", parseValue(fromDate, "timestamp"));
@@ -40,28 +40,31 @@ public class DynamicDataRepository {
             queryParams.put("toDate", parseValue(toDate, "timestamp"));
         }
 
-        // Process other filters dynamically
         for (Map.Entry<String, Object> entry : filters.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-
             validateFilterKey(schema, table, key);
             String columnType = getColumnType(schema, table, key);
             String operator = "=";
-
-            // Check for text types and LIKE operator
             if ("text".equals(columnType) || "varchar".equals(columnType)) {
                 if (value instanceof String && ((String) value).contains("%")) {
                     operator = "LIKE";
                 }
             } else if (value instanceof String && (((String) value).startsWith(">") || ((String) value).startsWith("<"))) {
-                // Handle operators > or < for numeric types
                 operator = ((String) value).substring(0, 1);
                 value = ((String) value).substring(1).trim();
             }
-
             sql.append(" AND ").append(key).append(" ").append(operator).append(" :").append(key);
             queryParams.put(key, parseValue(value, columnType));
+        }
+
+        if (sortBy != null && isValidFilterColumn(schema, table, sortBy)) {
+            sql.append(" ORDER BY ").append(sortBy);
+            if ("desc".equalsIgnoreCase(sortOrder)) {
+                sql.append(" DESC");
+            } else {
+                sql.append(" ASC");
+            }
         }
 
         log.debug("Executing SQL: {}", sql);
@@ -73,6 +76,14 @@ public class DynamicDataRepository {
             log.error("Error executing query: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to fetch data from " + table + " in " + schema, e);
         }
+    }
+
+    public boolean isValidFilterColumn(String schema, String table, String column) {
+        String sql = "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = :schema " +
+                "AND table_name = :table AND column_name = :column)";
+        Map<String, Object> params = Map.of("schema", schema, "table", table, "column", column);
+        Boolean exists = jdbcTemplate.queryForObject(sql, params, Boolean.class);
+        return Boolean.TRUE.equals(exists);
     }
 
     private String getColumnType(String schema, String table, String columnName) {
