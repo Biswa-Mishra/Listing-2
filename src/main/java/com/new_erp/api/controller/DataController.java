@@ -62,8 +62,8 @@ public class DataController {
     }
 
     private boolean isValidSchemaAndTable(String schema, String table) {
-        List<String> allowedSchemas = List.of("mdm_internal");
-        List<String> allowedTables = List.of("location_master_raw_tb");
+        List<String> allowedSchemas = List.of("mdm_internal","mdm_product");
+        List<String> allowedTables = List.of("location_master_raw_tb","location_master_vw");
         return allowedSchemas.contains(schema) && allowedTables.contains(table);
     }
 
